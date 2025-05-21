@@ -75,7 +75,8 @@ if out_ext[-1] == "b":
 rename_glyphs(cm)
 cm.generate(out_bdf)
 for bdf in glob.glob("*.bdf"):
-    if bdf.startswith(out_bdf.split(".")[0] + "-") and re.search(bdf, r"\d+\.bdf$"):
+    match = re.search(r"\r+\.bdf$", bdf))
+    if bdf.startswith(out_bdf.split(".")[0] + "-") and match:
         out_bdf = out_bdf.replace(".bdf","_ffout.bdf")
         os.rename(bdf, out_bdf)
         break
