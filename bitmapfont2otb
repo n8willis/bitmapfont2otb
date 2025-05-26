@@ -62,7 +62,12 @@ def default_char(bdf, f):
         f.removeGlyph(ndg)
 
 def repair_ff_bdf(in_bdf):
-    """Fix known problems with FontForge's BDF-generation output."""
+    """Fix known problems with FontForge's BDF-generation output.
+
+       Currently, this just means correcting a miscount in the
+       properties block; FontForge mistakenly counts comment lines
+       and puts the wrong number on the STARTPROPERTIES line,
+       which causes bdflib to fail at parsing."""
     with open(in_bdf, "r") as ifile, open(in_bdf + ".tmp", "w") as ofile:
         lines = ifile.readlines()
         for line in lines:
@@ -89,6 +94,9 @@ out_ext_i = args.outfile.rindex(".")
 out_ext = args.outfile[out_ext_i:]
 if out_ext == ".otb" or out_ext == ".otf":
     output_req = "opentype"
+    ## TODO: If CFF is used for output, we cannot use components,
+    ##       so we should un-set ars.component and/or report to
+    ##       the user that components will not be used.
 elif out_ext == ".ttf" or out_ext == ".ttb":
     output_req = "truetype"
 else:
@@ -151,18 +159,19 @@ def pos_to_contour(x, y):
 
 
 def make_pixel_glyph(font):
-    font.createChar(-1, "_pixel")
-    pen = font["_pixel"].glyphPen()
+    font.createChar(0xE000, "pixel")
+    pen = font["pixel"].glyphPen()
     pen.moveTo((0,0))
     pen.lineTo((block_size, 0))
     pen.lineTo((block_size, block_size))
     pen.lineTo((0, block_size))
     pen.closePath()
-    pen = None
+    #pen = None
+    font["pixel"].glyphclass = "component"
     
 
 def pos_to_component(x, y):
-    pen.addComponent("_pixel", psMat.translate(x, y))
+    pen.addComponent("pixel", psMat.translate(x, y))
 
     
 if args.composite:
@@ -175,30 +184,8 @@ for i, g in enumerate(bdf.glyphs):
     orig_x = x
 
     print(gn)
-    if args.composite:
-        # Writing a component reference for each pixel
-        f.createChar(-1,"temp")
-        pen = f["temp"].glyphPen()
-    else:
-        # Writing direct contours for each pixel
-        l = fontforge.layer()
-        
-    pixels = list()
-    for row in g.iter_pixels():
-        pixels.append([p for p in row])
-    for row in reversed(pixels):
-        for p in row:
-            if p:
-                if args.composite:
-                    pen.addComponent("_pixel", psMat.translate(x, y))
-                else:
-                    c = pos_to_contour(x, y)
-                    l += c
-            x += 1
-        x = orig_x
-        y += 1
 
-  
+    
     # Find glyph codepoint
     if re.match(r'^\d+$', gn):
         e = int(gn, 10)
@@ -216,10 +203,37 @@ for i, g in enumerate(bdf.glyphs):
 
     
     ffg = f.createChar(e,gn)
+ 
     
     if args.composite:
-        ffg.draw(pen)
-        pen = None
+        # We will be writing a component reference for each pixel
+        pen = ffg.glyphPen(replace=False)
+    else:
+        # We will be writing direct contours for each pixel
+        l = fontforge.layer()
+        
+    pixels = list()
+    for row in g.iter_pixels():
+        pixels.append([p for p in row])
+    for row in reversed(pixels):
+        for p in row:
+            if p:
+                if args.composite:
+                    pen.addComponent("pixel", psMat.translate(x*block_size, y*block_size))
+                else:
+                    c = pos_to_contour(x, y)
+                    l += c
+            x += 1
+        x = orig_x
+        y += 1
+
+     
+    if args.composite:
+        ffg.unlinkRmOvrlpSave = False
+        #pen = None
+        #ffg.build()
+        #ffg.glyphclass = "baseligature"
+        print(ffg.references)
     else:
         ffg.foreground = l
         # Completes writing direct contours for each pixel
